@@ -17,5 +17,5 @@
 2. Установить зависимости
 3. Запуск тестов и сбор результатов. Из корневой папки через терминал командой python -m pytest tests/ --alluredir=./allure-results -v
 4. Генерация отчета Allure командой allure generate allure-results -o allure-report --clean в теринале
-5. Открыть отчет в браузере коандой allure open allure-report 
+5. Открыть отчет в браузере командой allure open allure-report 
 
