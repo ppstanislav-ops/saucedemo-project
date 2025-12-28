@@ -9,7 +9,6 @@ import pytest
 from playwright.sync_api import Page
 import allure
 from datetime import datetime
-import json
 
 # Теперь импорты должны работать
 try:
@@ -22,56 +21,57 @@ except ImportError as e:
     print(f"Содержимое директории: {os.listdir(current_dir)}")
     raise
 
+
 @pytest.fixture
 def page_context(playwright):
     """Фикстура для создания контекста браузера"""
     browser = playwright.chromium.launch(headless=True)
     context = browser.new_context()
     page = context.new_page()
-    
+
     yield page
-    
+
     context.close()
     browser.close()
+
 
 @pytest.fixture
 def login_page(page_context: Page):
     """Фикстура для страницы логина"""
     return LoginPage(page_context)
 
+
 @pytest.fixture
 def inventory_page(page_context: Page):
     """Фикстура для страницы инвентаря"""
     return InventoryPage(page_context)
 
-# ============== ВАЖНО: Исправленные хуки для Allure ==============
 
+# ============== Хук для скриншотов при падении ==============
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
 def pytest_runtest_makereport(item, call):
     """
-    Хук для получения результатов теста и прикрепления скриншотов при падении
+    Хук для прикрепления скриншотов при падении теста
     """
     outcome = yield
     rep = outcome.get_result()
-    
-    # Устанавливаем атрибут отчета для последующего использования
+
     setattr(item, f"rep_{rep.when}", rep)
-    
+
     if rep.when == "call" and rep.failed:
-        # Получаем объект page из фикстуры
         try:
             if "page_context" in item.funcargs:
                 page = item.funcargs["page_context"]
-                
-                # Создаем директорию для скриншотов если ее нет
+
+                # Создаем директорию для скриншотов
                 os.makedirs("allure-results/screenshots", exist_ok=True)
-                
-                # Создаем скриншот
+
+                # Снимок экрана
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 screenshot_path = f"allure-results/screenshots/{item.name}_{timestamp}.png"
                 page.screenshot(path=screenshot_path, full_page=True)
-                
-                # Прикрепляем скриншот к Allure отчету
+
+                # Прикрепляем к Allure
                 with open(screenshot_path, "rb") as f:
                     allure.attach(
                         f.read(),
@@ -81,62 +81,14 @@ def pytest_runtest_makereport(item, call):
         except Exception as e:
             print(f"Не удалось создать скриншот: {e}")
 
-# КРИТИЧЕСКО ВАЖНЫЙ ХУК: Сохраняем результаты тестов для Allure
-@pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_protocol(item, nextitem):
-    """
-    Хук для сохранения результатов тестов в формате Allure
-    """
-    # Получаем уникальный ID для теста
-    test_uuid = item.nodeid.replace('/', '_').replace(':', '_').replace('.', '_')
-    
-    # Запускаем тест
-    yield
-    
-    # Сохраняем результаты
-    if hasattr(item, 'rep_call'):
-        report = item.rep_call
-        
-        # Создаем структуру данных для Allure
-        allure_result = {
-            "name": item.name,
-            "status": "passed" if report.passed else "failed",
-            "stage": "finished",
-            "description": item.function.__doc__ or "",
-            "start": int(datetime.now().timestamp() * 1000) - int(report.duration * 1000),
-            "stop": int(datetime.now().timestamp() * 1000),
-            "uuid": test_uuid,
-            "historyId": test_uuid,
-            "fullName": item.nodeid,
-            "labels": [
-                {"name": "suite", "value": item.parent.name if hasattr(item.parent, 'name') else "Unknown"},
-                {"name": "testClass", "value": item.cls.__name__ if hasattr(item, 'cls') else "Unknown"},
-                {"name": "testMethod", "value": item.name}
-            ]
-        }
-        
-        # Сохраняем в файл
-        os.makedirs("allure-results", exist_ok=True)
-        result_file = os.path.join("allure-results", f"{test_uuid}-result.json")
-        with open(result_file, "w") as f:
-            json.dump(allure_result, f, indent=2)
 
-def pytest_configure(config):
-    """Конфигурация pytest"""
-    config.addinivalue_line(
-        "markers", "performance: mark test as performance related"
-    )
-    
-    # Создаем директорию для allure результатов если ее нет
-    os.makedirs("allure-results", exist_ok=True)
-
-# Дополнительная фикстура для прикрепления информации о тесте
+# ============== Динамическое добавление информации в Allure ==============
 @pytest.fixture(scope="function", autouse=True)
 def attach_test_info(request):
-    """Автоматически прикрепляет информацию о тесте к Allure"""
+    """Автоматически прикрепляет название и описание теста к Allure"""
     yield
-    
-    # Добавляем информацию о тесте
-    allure.dynamic.title(request.node.name)
-    allure.dynamic.description(request.node.function.__doc__ or "")
 
+    allure.dynamic.title(request.node.name)
+    if request.node.function.__doc__:
+        allure.dynamic.description(request.node.function.__doc__)
+        

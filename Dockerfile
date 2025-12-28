@@ -1,55 +1,39 @@
-﻿# Используем официальный образ Python
-FROM python:3.10-slim
+# Используем стабильный образ на основе Debian 11 (Bullseye)
+FROM python:3.10-bullseye
 
-# Устанавливаем рабочую директорию
-WORKDIR /app
-
-# Устанавливаем системные зависимости для Playwright
-RUN apt-get update && apt-get install -y \
+# Установка системных зависимостей
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    chromium \
+    openjdk-11-jre-headless \
     wget \
-    gnupg \
     unzip \
-    libnss3 \
-    libnspr4 \
-    libatk1.0-0 \
-    libatk-bridge2.0-0 \
-    libcups2 \
-    libdrm2 \
-    libxkbcommon0 \
-    libxcomposite1 \
-    libxdamage1 \
-    libxfixes3 \
-    libxrandr2 \
-    libgbm1 \
-    libasound2 \
-    libpangocairo-1.0-0 \
-    libpango-1.0-0 \
-    libcairo2 \
-    libatspi2.0-0 \
-    libx11-6 \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
-# Устанавливаем Allure Command Line
-RUN wget https://github.com/allure-framework/allure2/releases/download/2.24.1/allure-2.24.1.tgz \
-    && tar -zxvf allure-2.24.1.tgz -C /opt/ \
-    && ln -s /opt/allure-2.24.1/bin/allure /usr/local/bin/allure \
-    && rm allure-2.24.1.tgz
+# Проверка установки Chromium
+RUN chromium --version
 
-# Копируем requirements.txt
+# Настройка переменных окружения
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV CHROMIUM_BIN=/usr/bin/chromium
+ENV PLAYWRIGHT_BROWSERS_PATH=0
+
+# Рабочая директория
+WORKDIR /app
+
+# Копируем зависимости
 COPY requirements.txt .
 
-# Устанавливаем Python зависимости
+# Устанавливаем Python-пакеты
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Устанавливаем Playwright и браузеры
-RUN python -m playwright install chromium \
-    && playwright install-deps
+# Устанавливаем Playwright и Chromium
+RUN python -m playwright install chromium
 
-# Копируем весь проект
+# Копируем весь код проекта
 COPY . .
 
-# Создаем директории для результатов
-RUN mkdir -p allure-results allure-report
-
-# Команда по умолчанию (можно переопределить при запуске)
-CMD ["pytest", "--alluredir=allure-results", "-v"]
+# Точка входа по умолчанию
+CMD ["pytest", "tests/", "--alluredir=allure-results", "-v"]
